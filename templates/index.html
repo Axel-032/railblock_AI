@@ -1,0 +1,291 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Corridor Block Schedule — Indian Railways COA{% endblock %}
+
+{% block content %}
+<!-- Control Office Daily Schedule Authorization Bar -->
+<div class="schedule-approval-bar {% if schedule_control.is_approved %}status-approved{% else %}status-pending{% endif %}" id="scheduleApprovalBar">
+  <div class="approval-status-info">
+    {% if schedule_control.is_approved %}
+      <span class="approval-badge badge-approved">
+        <span class="ui-icon" aria-hidden="true">✅</span>
+        AUTHORIZED
+      </span>
+      <div class="approval-text">
+        <strong>SCHEDULE AUTHORIZED FOR TRAFFIC OPERATIONS</strong>
+        <span style="font-size: 11px; color: var(--signal-clear); margin-left: 8px;">
+          Signed: <strong>{{ schedule_control.approved_by }}</strong>
+          {% if schedule_control.approved_at %}({{ schedule_control.approved_at|time:"H:i" }} hrs){% endif %}
+        </span>
+      </div>
+    {% else %}
+      <span class="approval-badge badge-pending">● PROPOSED</span>
+      <div class="approval-text">
+        <strong>SCHEDULE PROPOSAL — AWAITING SECTION CONTROLLER AUTHORIZATION</strong>
+      </div>
+    {% endif %}
+  </div>
+
+  <div>
+    {% if schedule_control.is_approved %}
+      <button class="btn btn-reopen btn-sm" onclick="toggleScheduleApproval()">
+        Reopen Schedule
+      </button>
+    {% else %}
+      <button class="btn btn-approve btn-sm" onclick="toggleScheduleApproval()">
+        <span class="ui-icon" aria-hidden="true">✅</span>
+        Authorize Schedule
+      </button>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Page Header -->
+<div class="page-header">
+  <div>
+    <h2 class="page-title">Corridor Master Block Timetable</h2>
+    <p class="page-subtitle">
+      Joint Track Possession: <strong>Track (TMS)</strong> • <strong>Signal (SMMS)</strong> • <strong>Traction (TRD)</strong>
+    </p>
+  </div>
+  <div class="header-button-group">
+    <button class="btn btn-primary btn-sm" onclick="openGlobalAddBlockModal()">
+      <span class="ui-icon" aria-hidden="true">🗓️</span>
+      Add Block Request
+    </button>
+    <button class="btn btn-outline btn-sm" onclick="openLagrangianModal()">
+      <span class="ui-icon" aria-hidden="true">📡</span>
+      Telemetry
+    </button>
+    <a href="{% url 'tms_dashboard' %}" class="btn btn-tms-outline btn-sm">Track (TMS)</a>
+    <a href="{% url 'smms_dashboard' %}" class="btn btn-smms-outline btn-sm">Signal (SMMS)</a>
+    <a href="{% url 'trd_dashboard' %}" class="btn btn-trd-outline btn-sm">Traction (TRD)</a>
+  </div>
+</div>
+
+<!-- Operational KPI Cards -->
+<section class="kpi-grid" aria-label="Key Performance Indicators">
+  <div class="kpi-card">
+    <div class="kpi-label">Corridor Track Uptime</div>
+    <div class="kpi-value" id="kpiUptime" style="color: var(--signal-clear);">{{ stats.uptime_percent }}%</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Downtime Saved (Bundling)</div>
+    <div class="kpi-value" id="kpiSaved" style="color: var(--gold-accent);">+{{ stats.minutes_saved }} <span style="font-size: 14px;">min</span></div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Joint Combined Windows</div>
+    <div class="kpi-value" id="kpiBundled" style="color: var(--gold-accent);">{{ stats.bundled_blocks }}</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Safety Incompatibilities Separated</div>
+    <div class="kpi-value" id="kpiConflicts" style="color: var(--red-secondary);">{{ stats.separated_conflicts }}</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Passenger Express Detentions</div>
+    <div class="kpi-value" id="kpiPeak" style="color: var(--signal-clear);">0 <span style="font-size: 14px;">trains</span></div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Solver Computation Time</div>
+    <div class="kpi-value" id="kpiSolveTime" style="color: var(--text-bright);">{{ stats.solve_time_ms }} <span style="font-size: 14px;">ms</span></div>
+  </div>
+</section>
+
+<!-- 24-HOUR VISUAL TIMETABLE (GANTT VIEW) -->
+<div class="card timeline-card">
+  <div class="card-header timeline-header">
+    <div>
+      <div class="card-title">24-Hour Corridor Schedule & Train Density Profile</div>
+    </div>
+
+    <!-- Timeline Department Filters -->
+    <div class="timeline-controls">
+      <div class="filter-pills" id="deptFilterPills">
+        <button class="filter-pill active" onclick="setTimelineFilter('all', this)">All ({{ stats.total_requests }})</button>
+        <button class="filter-pill pill-tms" onclick="setTimelineFilter('tms', this)">TMS Track ({{ stats.tms_count }})</button>
+        <button class="filter-pill pill-smms" onclick="setTimelineFilter('smms', this)">SMMS Signal ({{ stats.smms_count }})</button>
+        <button class="filter-pill pill-trd" onclick="setTimelineFilter('trd', this)">TRD Traction ({{ stats.trd_count }})</button>
+        <button class="filter-pill pill-joint" onclick="setTimelineFilter('joint', this)">⚡ Joint Windows ({{ stats.bundled_blocks }})</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="timeline-legend">
+    <div class="legend-item"><span class="legend-box tms-bg"></span> TMS Track</div>
+    <div class="legend-item"><span class="legend-box smms-bg"></span> SMMS Signal</div>
+    <div class="legend-item"><span class="legend-box trd-bg"></span> TRD Traction</div>
+    <div class="legend-item"><span class="legend-box joint-bg"></span> ⚡ Joint Window</div>
+    <div class="legend-sep"></div>
+    <div class="legend-item"><span class="traffic-dot dot-lean"></span> Off-Peak Lean Corridor (01:00-05:00 / 11:30-14:00)</div>
+    <div class="legend-item"><span class="traffic-dot dot-peak"></span> High Passenger Peak (Vande Bharat / Rajdhani)</div>
+  </div>
+
+  <!-- Dynamic Timeline Container rendered by Plain JS -->
+  <div class="timeline-outer">
+    <div id="timelineContainer" class="timeline-container">
+      <div style="padding: 20px; color: var(--text-dim); text-align: center;">Loading corridor timeline...</div>
+    </div>
+  </div>
+</div>
+
+<!-- TECHNICAL COORDINATION CARDS -->
+<div class="grid-2col">
+  <!-- Combined Windows Card -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">⚡ Combined Compatible Blocks (Shadow Windows)</div>
+      <span class="badge badge-active">+{{ stats.minutes_saved }} min saved</span>
+    </div>
+    <div class="card-body">
+      <div class="bundle-list" id="jointBlocksList">
+        {% if joint_blocks %}
+          {% for jb in joint_blocks %}
+            <div class="bundle-item">
+              <div class="bundle-header">
+                <div>
+                  <span class="badge badge-joint">{{ jb.joint_id }}</span>
+                  <strong style="margin-left: 6px; color: var(--text-bright);">{{ jb.location }}</strong>
+                </div>
+                <span class="badge badge-time">{{ jb.start_time }} – {{ jb.end_time }} ({{ jb.duration_minutes }}m)</span>
+              </div>
+              <div class="bundle-details">
+                <div class="bundle-teams">
+                  {% for t in jb.teams %}
+                    <span class="tag-team">{{ t }}</span>
+                  {% endfor %}
+                </div>
+                <div class="bundle-explanation">
+                  {{ jb.explanation }}
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        {% else %}
+          <div style="font-size: 12px; color: var(--text-dim); padding: 8px;">
+            No joint blocks combined in current plan.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Incompatible Separation Card -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">
+        <span class="ui-icon" aria-hidden="true">🚨</span>
+        Separated Incompatible Tasks (Safety Enforced)
+      </div>
+      <span class="badge badge-conflict">{{ stats.separated_conflicts }} Separations</span>
+    </div>
+    <div class="card-body">
+      <div class="separation-list" id="separatedBlocksList">
+        {% if separated_blocks %}
+          {% for sb in separated_blocks %}
+            <div class="separation-item">
+              <div class="separation-header">
+                <span class="badge badge-conflict">DISJOINT WINDOW</span>
+                <strong style="margin-left: 6px; color: var(--text-bright);">{{ sb.location }}</strong>
+              </div>
+              <div class="separation-content">
+                <div class="task-pair">
+                  <div class="task-box">
+                    <div style="font-weight: 700; color: var(--blue-primary); font-size: 11px;">{{ sb.req_a.code }} ({{ sb.req_a.team }})</div>
+                    <div style="font-size: 11px;">{{ sb.req_a.type }}</div>
+                    <div style="font-size: 10px; color: var(--text-dim); font-family: monospace;">Slot: {{ sb.req_a.time }}</div>
+                  </div>
+                  <div class="task-vs">&ne;</div>
+                  <div class="task-box">
+                    <div style="font-weight: 700; color: var(--smms-green); font-size: 11px;">{{ sb.req_b.code }} ({{ sb.req_b.team }})</div>
+                    <div style="font-size: 11px;">{{ sb.req_b.type }}</div>
+                    <div style="font-size: 10px; color: var(--text-dim); font-family: monospace;">Slot: {{ sb.req_b.time }}</div>
+                  </div>
+                </div>
+                <div class="separation-reason">
+                  <span class="ui-icon" aria-hidden="true">🛑</span>
+                  <strong>Rule:</strong> {{ sb.separation_reason }}
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        {% else %}
+          <div style="font-size: 12px; color: var(--text-dim); padding: 8px;">
+            No incompatible conflicts detected on corridor.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CORRIDOR POSSESSION TIMETABLE -->
+<div class="card" style="margin-top: 20px;">
+  <div class="card-header">
+    <div class="card-title">Corridor Maintenance Requests & Allocations</div>
+    <div style="display: flex; gap: 8px;">
+      <input type="text" id="tableFilterInput" class="form-control" placeholder="Search code, section, task..." style="width: 240px;">
+      <button class="btn btn-primary btn-sm" onclick="openGlobalAddBlockModal()">+ Add Block</button>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table-custom table-filterable">
+      <thead>
+        <tr>
+          <th>Req Code</th>
+          <th>Department</th>
+          <th>Section / Location</th>
+          <th>Maintenance Work</th>
+          <th>Duration</th>
+          <th>Allocated Slot</th>
+          <th>Severity</th>
+          <th style="text-align: right;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in requests %}
+          <tr class="{% if r.is_joint %}bundled-row{% endif %}">
+            <td><span class="badge badge-{{ r.team.code|lower }}">{{ r.request_code }}</span></td>
+            <td>
+              <span style="font-weight: 700; color: var(--text-bright);">{{ r.team.name }}</span>
+            </td>
+            <td><strong>{{ r.location }}</strong></td>
+            <td>
+              <div style="font-weight: 600; color: var(--text-bright);">{{ r.maintenance_type }}</div>
+              {% if r.is_joint %}
+                <span class="badge badge-joint" style="margin-top: 2px;">⚡ Joint with {{ r.joined_with_codes }}</span>
+              {% endif %}
+            </td>
+            <td style="font-family: monospace;">{{ r.estimated_duration }}m</td>
+            <td>
+              {% if r.scheduled_start_time %}
+                <strong style="color: var(--text-bright); font-family: monospace;">{{ r.scheduled_start_time|time:"H:i" }} – {{ r.scheduled_end_time|time:"H:i" }}</strong>
+              {% else %}
+                <span class="badge badge-pending">Awaiting Window</span>
+              {% endif %}
+            </td>
+            <td><span class="badge badge-{{ r.severity|lower }}">{{ r.severity }}</span></td>
+            <td style="text-align: right;">
+              <button class="btn-danger-sm" onclick="cancelRequest({{ r.id }}, '{{ r.request_code }}')" title="Cancel this block request">
+                Cancel
+              </button>
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="8" style="text-align: center; color: var(--text-dim); padding: 24px;">
+              No maintenance block requests currently registered. Click '+ Add Block Request' above.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

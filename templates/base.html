@@ -1,0 +1,197 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Indian Railways — Control Office Application (COA){% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="{% static 'icons/train-svgrepo-com.svg' %}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,100;0,300;0,400;0,700;0,900;1,100;1,300;1,400;1,700;1,900&family=Ruwudu:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'css/style.css' %}?v=5.0">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+  <!-- Official Railway Command Bar -->
+  <header class="site-header">
+    <div class="header-inner">
+      <a href="{% url 'index' %}" class="brand-section">
+        <span class="brand-badge">IR-COA</span>
+        <div class="brand-titles">
+          <h1>INDIAN RAILWAYS — CONTROL OFFICE APPLICATION</h1>
+          <span>Corridor Maintenance Block System • Ahmedabad Division (ADI)</span>
+        </div>
+      </a>
+
+      <!-- Primary Department Navigation -->
+      <nav class="site-nav" aria-label="Department Navigation">
+        <a href="{% url 'index' %}" class="nav-link {% if request.resolver_match.url_name == 'index' or request.resolver_match.url_name == 'main_dashboard' %}active{% endif %}">
+          Main Dashboard
+        </a>
+        <a href="{% url 'tms_dashboard' %}" class="nav-link {% if 'tms' in request.path or 'engineering' in request.path %}active{% endif %}">
+          <span class="dept-dot tms-dot"></span> Track (TMS)
+        </a>
+        <a href="{% url 'smms_dashboard' %}" class="nav-link {% if 'smms' in request.path or 'signal' in request.path %}active{% endif %}">
+          <span class="dept-dot smms-dot"></span> Signal (SMMS)
+        </a>
+        <a href="{% url 'trd_dashboard' %}" class="nav-link {% if 'trd' in request.path or 'traction' in request.path %}active{% endif %}">
+          <span class="dept-dot trd-dot"></span> Traction (TRD)
+        </a>
+      </nav>
+
+      <!-- Global Actions -->
+      <div class="header-actions">
+        <button class="btn btn-primary btn-sm" onclick="openGlobalAddBlockModal()">
+          <span class="ui-icon" aria-hidden="true">🗓️</span>
+          Add Block Request
+        </button>
+        <button class="btn btn-outline btn-sm" onclick="resetCorridorData()" title="Reset timetable and requests to corridor baseline">
+          <span class="ui-icon" aria-hidden="true">🔄</span>
+          Reset
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="main-container">
+    <!-- Flash Messages (Auto-dismiss via Vanilla JS) -->
+    {% if messages %}
+      <div class="flash-messages">
+        {% for message in messages %}
+          <div class="alert alert-{{ message.tags|default:'info' }}">
+            <span>{{ message }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Global Modal: Add Block Request (Works everywhere) -->
+  <div id="globalAddBlockModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="globalAddModalTitle">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="globalAddModalTitle" class="modal-title">Submit Maintenance Block Request</h3>
+        <button class="modal-close-btn" onclick="closeModal('globalAddBlockModal')">Close</button>
+      </div>
+      <form id="globalAddBlockForm" method="POST" action="{% url 'api_submit_request' %}" onsubmit="handleBlockFormSubmit(event)">
+        {% csrf_token %}
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Department / Agency</label>
+            <select name="department" id="req_dept_select" class="form-control" required>
+              <option value="tms">Track Management System (TMS / Civil)</option>
+              <option value="smms">Signal Maintenance & Management System (SMMS / S&T)</option>
+              <option value="trd">Traction Distribution System (TRD / 25kV OHE)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Corridor Section / Line</label>
+            <select name="location" class="form-control" required>
+              <option value="Maninagar Down Main">Maninagar Down Main</option>
+              <option value="Ahmedabad Up Main">Ahmedabad Up Main</option>
+              <option value="Sabarmati Fast Line">Sabarmati Fast Line</option>
+              <option value="Vatva Freight Loop">Vatva Freight Loop</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Maintenance Work Type</label>
+            <input type="text" name="maintenance_type" class="form-control" required placeholder="e.g. Turnout Rail Renewal, Point Machine Overhaul, 25kV Catenary Wire Check">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group" style="flex: 1;">
+              <label class="form-label">Duration (Minutes)</label>
+              <select name="estimated_duration" class="form-control" required>
+                <option value="30">30 mins</option>
+                <option value="45">45 mins</option>
+                <option value="60" selected>60 mins (1 hour)</option>
+                <option value="90">90 mins (1.5 hours)</option>
+                <option value="120">120 mins (2 hours)</option>
+                <option value="150">150 mins (2.5 hours)</option>
+                <option value="180">180 mins (3 hours)</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex: 1;">
+              <label class="form-label">Severity Level</label>
+              <select name="severity" class="form-control">
+                <option value="CRITICAL">Critical (Immediate Line Flaw)</option>
+                <option value="HIGH" selected>High (Urgent Maintenance)</option>
+                <option value="MEDIUM">Medium (Routine Periodic)</option>
+                <option value="LOW">Low (Siding / Auxiliary)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group" style="flex: 1;">
+              <label class="form-label">Preferred Time of Day</label>
+              <input type="time" name="preferred_time" class="form-control" value="02:00" aria-label="Preferred time of day">
+            </div>
+            <div class="form-group" style="flex: 1;">
+              <label class="form-label">Required Gang Machinery / Vehicles</label>
+              <input type="text" name="required_resources" class="form-control" placeholder="e.g. Gang (12 staff), Tower Wagon, Rail Saw, Tamping Machine">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Work Description & Justification</label>
+            <textarea name="description" class="form-control" rows="2" placeholder="Operational justification and corridor segment details..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('globalAddBlockModal')">Cancel</button>
+          <button type="submit" id="btnSubmitBlock" class="btn btn-primary">Submit Request</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Details Inspection Modal -->
+  <div id="detailModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modalTitle" class="modal-title">Block Details</h3>
+        <button id="modalCloseBtn" class="modal-close-btn" onclick="closeModal('detailModal')">Close</button>
+      </div>
+      <div id="modalBody" class="modal-body">
+        <!-- Injected via JavaScript -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Telemetry Modal -->
+  <div id="lagrangianModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="lagrangianModalTitle">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h3 id="lagrangianModalTitle" class="modal-title">Lagrangian Solver Telemetry</h3>
+        <button class="modal-close-btn" onclick="closeModal('lagrangianModal')" aria-label="Close modal">Close</button>
+      </div>
+      <div id="lagrangianModalBody" class="modal-body">
+        <!-- Injected via JavaScript -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div>
+        <strong>INDIAN RAILWAYS — AHMEDABAD DIVISION</strong> • CONTROL OFFICE APPLICATION (COA)
+      </div>
+      <div style="text-align: right; font-family: monospace;">
+        <span>Solver: CP-SAT (Lagrangian)</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="{% static 'js/app.js' %}"></script>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

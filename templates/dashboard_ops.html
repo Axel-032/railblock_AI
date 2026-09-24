@@ -1,0 +1,210 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Section Controller Operations Command — RAILBLOCK AI{% endblock %}
+
+{% block content %}
+<!-- Operations Command Header -->
+<div class="page-header">
+  <div>
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+      <span class="badge" style="background-color: var(--blue-primary); color: var(--text-bright); font-size: 11px; padding: 3px 8px;">
+        SECTION CONTROL
+      </span>
+      <h2 class="page-title">Operations Command Center</h2>
+    </div>
+    <p class="page-subtitle">Ahmedabad Division Corridor Possession & Traffic Regulation • Sr. DOM Office</p>
+  </div>
+  <div style="display: flex; gap: 8px;">
+    <a href="{% url 'index' %}" class="btn btn-outline btn-sm">&larr; Master Schedule</a>
+    <a href="{% url 'engineering_dashboard' %}" class="btn btn-outline btn-sm">Civil (TMS)</a>
+    <a href="{% url 'signal_dashboard' %}" class="btn btn-outline btn-sm">Signal (SMMS)</a>
+    <a href="{% url 'traction_dashboard' %}" class="btn btn-outline btn-sm">Traction (TRD)</a>
+  </div>
+</div>
+
+<!-- Operations KPI Cards -->
+<section class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">Active Block Possessions</div>
+    <div class="kpi-value" style="color: var(--signal-clear);">{{ blocks|length }}</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Scheduled Maintenance Tasks</div>
+    <div class="kpi-value" style="color: var(--blue-primary);">{{ stats.scheduled_count }}</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Bundled Multi-Agency Tasks</div>
+    <div class="kpi-value" style="color: var(--gold-accent);">{{ stats.bundled_count }}</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Downtime Saved For Traffic</div>
+    <div class="kpi-value" style="color: var(--signal-clear);">+{{ stats.downtime_saved_hours }} <span style="font-size: 16px;">hrs</span></div>
+  </div>
+</section>
+
+<!-- Corridor Block Execution & Status Control -->
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">Corridor Possession Execution & Traffic Handover</div>
+  </div>
+  <div class="table-responsive">
+    <table class="table-custom">
+      <thead>
+        <tr>
+          <th>Block Code</th>
+          <th>Location</th>
+          <th>Time Window</th>
+          <th>Participating Teams</th>
+          <th>Tasks Assigned</th>
+          <th>25kV OHE Cut</th>
+          <th>Current Status</th>
+          <th style="text-align: right;">Status Transition</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for block in blocks %}
+          <tr class="{% if block.maintenance_tasks.count > 1 %}bundled-row{% endif %}">
+            <td><strong class="badge badge-team">{{ block.block_code }}</strong></td>
+            <td><strong>{{ block.location }}</strong></td>
+            <td>{{ block.start_time|time:"H:i" }} – {{ block.end_time|time:"H:i" }} ({{ block.duration_minutes }}m)</td>
+            <td>
+              {% if block.maintenance_tasks.count > 1 %}
+                <span class="badge" style="background: transparent; color: var(--gold-accent); border: 1px solid var(--gold-accent);">
+                  Joint: {{ block.primary_team_name }}
+                </span>
+              {% elif block.maintenance_tasks.count == 1 %}
+                {{ block.primary_team_name }}
+              {% else %}
+                <span style="color: var(--text-dim);">None</span>
+              {% endif %}
+            </td>
+            <td>{{ block.maintenance_tasks.count }} task(s)</td>
+            <td>
+              {% if block.is_power_cut_required %}
+                <span class="badge badge-ohe">Power Cut</span>
+              {% else %}
+                <span style="color: var(--text-dim); font-size: 11px;">No</span>
+              {% endif %}
+            </td>
+            <td>
+              <span class="badge badge-{{ block.status|lower }}">{{ block.status }}</span>
+            </td>
+            <td style="text-align: right;">
+              <form method="POST" action="{% url 'toggle_block_status' block_id=block.id %}" style="display: inline-flex; gap: 6px;">
+                {% csrf_token %}
+                {% if block.status == 'SCHEDULED' %}
+                  <input type="hidden" name="status" value="ACTIVE">
+                  <button type="submit" class="btn btn-sm btn-primary">Grant Possession (Active)</button>
+                {% elif block.status == 'ACTIVE' %}
+                  <input type="hidden" name="status" value="COMPLETED">
+                  <button type="submit" class="btn btn-sm btn-outline">Clear & Handover (Complete)</button>
+                {% else %}
+                  <input type="hidden" name="status" value="SCHEDULED">
+                  <button type="submit" class="btn btn-sm btn-outline">Reset to Scheduled</button>
+                {% endif %}
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="layout-2col">
+  <!-- Train Headway & Conflict Prevention Monitor -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Corridor Train Traffic & Headway Clearances</div>
+      <span class="badge badge-active">Protected</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table-custom">
+        <thead>
+          <tr>
+            <th>Train Number & Name</th>
+            <th>Location</th>
+            <th>Time Slot</th>
+            <th>Tier</th>
+            <th>Headway Safety Margin</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for train in trains %}
+            <tr>
+              <td>
+                <strong>{{ train.train_number }}</strong>
+                <div style="font-size: 11px; color: var(--text-muted);">{{ train.train_name }}</div>
+              </td>
+              <td>{{ train.location }}</td>
+              <td><strong>{{ train.start_time|time:"H:i" }} – {{ train.end_time|time:"H:i" }}</strong></td>
+              <td>
+                {% if train.priority_tier == 1 %}
+                  <span class="badge badge-conflict">Tier 1 Premium</span>
+                {% elif train.priority_tier == 2 %}
+                  <span class="badge badge-scheduled">Tier 2 Express</span>
+                {% else %}
+                  <span class="badge badge-completed">Tier {{ train.priority_tier }}</span>
+                {% endif %}
+              </td>
+              <td>
+                <span style="color: var(--signal-clear); font-weight: 600; font-size: 12px;">
+                  15m buffer
+                </span>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Real-time Optimization Engine Audit Log -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Optimization Logs</div>
+    </div>
+    <div class="table-responsive">
+      <table class="table-custom">
+        <thead>
+          <tr>
+            <th>Trigger Event</th>
+            <th>Status</th>
+            <th>Solve Latency</th>
+            <th>Timestamp</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for log in logs %}
+            <tr>
+              <td>
+                <span style="font-weight: 500;">{{ log.trigger_event|truncatechars:35 }}</span>
+                <div style="font-size: 11px; color: var(--text-dim);">{{ log.details|truncatechars:50 }}</div>
+              </td>
+              <td>
+                <span class="badge badge-active">{{ log.status }}</span>
+              </td>
+              <td>
+                <strong style="color: var(--blue-primary);">{{ log.solve_time_ms|floatformat:1 }} ms</strong>
+              </td>
+              <td style="font-size: 11px; color: var(--text-muted);">
+                {{ log.created_at|date:"H:i:s" }}
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="4" style="text-align: center; padding: 18px; color: var(--text-light);">
+                No optimization logs recorded yet.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

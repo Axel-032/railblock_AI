@@ -1,0 +1,155 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Track Management System (TMS) — Indian Railways COA{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <span class="dept-badge-large badge-tms">TMS</span>
+      <div>
+        <h2 class="page-title">Track Management System (TMS)</h2>
+        <p class="page-subtitle">{{ team.department_name }} • Lead: <strong>{{ team.lead_name }}</strong></p>
+      </div>
+    </div>
+  </div>
+  <div class="header-button-group">
+    <button class="btn btn-primary btn-sm" onclick="openGlobalAddBlockModal('tms')">
+      + New Track Block Request
+    </button>
+    <a href="{% url 'index' %}" class="btn btn-outline btn-sm">Corridor Master Schedule &rarr;</a>
+  </div>
+</div>
+
+<!-- Department Operational Metrics -->
+<section class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">Track Block Requests</div>
+    <div class="kpi-value" style="color: var(--blue-primary);">{{ metrics.total }}</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Joint Windows (with TRD / SMMS)</div>
+    <div class="kpi-value" style="color: var(--gold-accent);">{{ metrics.joint_count }}</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Critical Track Assets</div>
+    <div class="kpi-value" style="color: var(--red-secondary);">{{ metrics.critical_count }}</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Corridor Uptime Efficiency</div>
+    <div class="kpi-value" style="color: var(--signal-clear);">{{ latest_log.uptime_percent|default:"92.2" }}%</div>
+  </div>
+</section>
+
+<!-- Active Track Maintenance Schedule -->
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">TMS Scheduled Track Blocks & Possessions</div>
+    <button class="btn btn-primary btn-sm" onclick="openGlobalAddBlockModal('tms')">
+      <span class="ui-icon" aria-hidden="true">🗓️</span>
+      Add Track Request
+    </button>
+  </div>
+  <div class="table-responsive">
+    <table class="table-custom">
+      <thead>
+        <tr>
+          <th>Req Code</th>
+          <th>Location / Section</th>
+          <th>Track Work Description</th>
+          <th>Duration</th>
+          <th>Allocated Slot</th>
+          <th>Joint Multi-Agency Window</th>
+          <th>Period Placement</th>
+          <th>Severity</th>
+          <th style="text-align: right;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in requests %}
+          <tr class="{% if r.is_joint %}bundled-row{% endif %}">
+            <td><span class="badge badge-tms">{{ r.request_code }}</span></td>
+            <td><strong style="color: var(--text-bright);">{{ r.location }}</strong></td>
+            <td>
+              <div style="font-weight: 600; color: var(--text-bright);">{{ r.maintenance_type }}</div>
+              <div style="font-size: 11px; color: var(--text-muted);">{{ r.description|truncatechars:65 }}</div>
+            </td>
+            <td style="font-family: monospace;">{{ r.estimated_duration }}m</td>
+            <td>
+              {% if r.scheduled_start_time %}
+                <strong style="color: var(--text-bright); font-family: monospace;">{{ r.scheduled_start_time|time:"H:i" }} – {{ r.scheduled_end_time|time:"H:i" }}</strong>
+              {% else %}
+                <span class="badge badge-pending">PENDING</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if r.is_joint %}
+                <span class="badge badge-joint">⚡ Joint Window (with {{ r.joined_with_codes }})</span>
+              {% else %}
+                <span style="font-size: 11px; color: var(--text-muted);">Solo Track Possession</span>
+              {% endif %}
+            </td>
+            <td>
+              <span style="font-size: 11px; color: var(--text-muted);">{{ r.slot_period_desc|default:"Off-Peak Lean Window" }}</span>
+            </td>
+            <td><span class="badge badge-{{ r.severity|lower }}">{{ r.severity }}</span></td>
+            <td style="text-align: right;">
+              <button class="btn-danger-sm" onclick="cancelRequest({{ r.id }}, '{{ r.request_code }}')">
+                Cancel
+              </button>
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="9" style="text-align: center; color: var(--text-dim); padding: 24px;">
+              No TMS track block requests registered. Click '+ New Track Block Request' above.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- TMS Track Assets Inventory -->
+<div class="card" style="margin-top: 16px;">
+  <div class="card-header">
+    <div class="card-title">Permanent Way & Track Corridor Assets</div>
+    <span style="font-size: 11px; color: var(--text-muted);">Civil Engineering P-Way Register</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table-custom">
+      <thead>
+        <tr>
+          <th>Asset ID</th>
+          <th>Asset Description</th>
+          <th>Corridor Location</th>
+          <th>Criticality</th>
+          <th>Last Inspected</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in assets %}
+          <tr>
+            <td><strong>{{ a.asset_id }}</strong></td>
+            <td>{{ a.asset_type }}</td>
+            <td>{{ a.location }}</td>
+            <td><span class="badge badge-{{ a.criticality|lower }}">{{ a.criticality }}</span></td>
+            <td style="font-family: monospace;">{{ a.last_inspection_date }}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="5" style="text-align: center; color: var(--text-dim); padding: 16px;">
+              No assets registered.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

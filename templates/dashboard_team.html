@@ -1,0 +1,334 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ team.name }} Dashboard — RAILBLOCK AI{% endblock %}
+
+{% block content %}
+<!-- Team Header -->
+<div class="page-header">
+  <div>
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+      <span class="badge badge-team" style="background-color: {% if team.code == 'tms' %}var(--blue-primary){% elif team.code == 'smms' %}var(--smms-green){% elif team.code == 'trd' %}var(--gold-accent){% else %}var(--violet-accent){% endif %}; color: var(--text-bright); font-size: 13px; padding: 4px 10px;">
+        {{ team.code|upper }}
+      </span>
+      <h2 class="page-title">{{ team.name }}</h2>
+    </div>
+    <p class="page-subtitle">{{ team.department_name }} • Divisional In-charge: <strong>{{ team.lead_name }}</strong></p>
+  </div>
+  <div style="display: flex; gap: 8px;">
+    <a href="{% url 'index' %}" class="btn btn-outline btn-sm">&larr; Master Schedule</a>
+    <a href="{% url 'operations_dashboard' %}" class="btn btn-outline btn-sm">Section Controller</a>
+  </div>
+</div>
+
+<!-- Department KPI Metrics Grid -->
+<section class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">Department Requisitions</div>
+    <div class="kpi-value">{{ metrics.total }}</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Allocated Blocks</div>
+    <div class="kpi-value" style="color: var(--blue-primary);">{{ metrics.scheduled }}</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Pending / Unscheduled</div>
+    <div class="kpi-value" style="color: var(--gold-accent);">{{ metrics.pending }}</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Joint Multi-Agency Bundled</div>
+    <div class="kpi-value" style="color: var(--signal-clear);">{{ metrics.bundled }}</div>
+  </div>
+</section>
+
+<div class="layout-sidebar-main">
+  <!-- Left Column: Request Form & Notifications -->
+  <div>
+    <!-- Submit Maintenance Request Form -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Submit Maintenance Request</div>
+        <span class="badge badge-active" style="font-size: 10px;">Auto-Optimized</span>
+      </div>
+      <div class="card-body">
+        <form id="maintenanceRequestForm" method="POST" action="{% url 'submit_request' %}">
+          {% csrf_token %}
+          <input type="hidden" name="team_code" value="{{ team.code }}">
+
+          <div class="form-group">
+            <label class="form-label" for="asset_select">Corridor Asset</label>
+            <select id="asset_select" class="form-control" name="asset_id">
+              <option value="">-- Select Registered Asset or Type Custom --</option>
+              {% for asset in assets %}
+                <option value="{{ asset.asset_id }}" data-location="{{ asset.location }}" data-type="{{ asset.asset_type }}">
+                  {{ asset.asset_id }} ({{ asset.location }}) - {{ asset.asset_type|truncatechars:28 }} [{{ asset.criticality }}]
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="location">Corridor Location *</label>
+            <select id="location" name="location" class="form-control" required>
+              <option value="Ahmedabad">Ahmedabad</option>
+              <option value="Maninagar">Maninagar</option>
+              <option value="Vatva">Vatva</option>
+              <option value="Sabarmati">Sabarmati</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="maintenance_type">Maintenance Work / Type *</label>
+            <input type="text" id="maintenance_type" name="maintenance_type" class="form-control" placeholder="e.g. Ultrasonic Rail Testing / Catenary Check" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="asset_type">Asset Classification</label>
+            <input type="text" id="asset_type" name="asset_type" class="form-control" placeholder="e.g. P-Way Track Segment / Point Motor">
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label class="form-label" for="severity">Severity Level</label>
+              <select id="severity" name="severity" class="form-control">
+                <option value="CRITICAL">Critical</option>
+                <option value="HIGH">High</option>
+                <option value="MEDIUM" selected>Medium</option>
+                <option value="LOW">Low</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="estimated_duration">Duration (Mins) *</label>
+              <input type="number" id="estimated_duration" name="estimated_duration" class="form-control" value="60" min="15" max="240" step="15" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="required_resources">Required Equipment / Machinery</label>
+            <input type="text" id="required_resources" name="required_resources" class="form-control" placeholder="e.g. Tower Wagon / Tamping CSM / Gang (12 staff)">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="description">Operational Description</label>
+            <textarea id="description" name="description" class="form-control" placeholder="Details of track possession, safety speed restrictions, or required isolating points..."></textarea>
+          </div>
+
+          <div class="form-check" style="margin-bottom: 16px;">
+            <input type="checkbox" id="is_emergency" name="is_emergency" class="form-check-input">
+            <label class="form-check-label" for="is_emergency" style="font-weight: 600; color: var(--warm-crimson);">
+              Emergency Block Request (Highest Priority Override)
+            </label>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-block">
+            Submit Request (Auto-Schedules Block)
+          </button>
+        </form>
+
+        <div class="ai-box" style="margin-top: 16px;">
+          <div class="ai-box-title">Zero Manual Optimization</div>
+          <div style="color: var(--text-muted); font-size: 12px;">
+            Submitting this form automatically executes the Google OR-Tools CP-SAT scheduler in the background. It finds the next optimal block window, avoids express train traffic, and links with joint multi-agency maintenance without manual intervention.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Department Notifications -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Department Alerts</div>
+        {% if unread_count > 0 %}
+          <form method="POST" action="{% url 'mark_notifications_read' team_code=team.code %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline btn-sm" style="font-size: 11px; padding: 3px 8px;">Mark All Read</button>
+          </form>
+        {% endif %}
+      </div>
+      <div>
+        {% for note in notifications %}
+          <div class="notification-item {% if not note.is_read %}unread{% endif %}">
+            <div class="notification-header">
+              <span class="notification-title">
+                {% if note.notification_type == 'SCHEDULED' %}
+                  <span class="ui-icon" aria-hidden="true">🗓️</span>
+                {% elif note.notification_type == 'CONFLICT' %}
+                  <span class="ui-icon" aria-hidden="true">⚠️</span>
+                {% endif %}
+                {{ note.title }}
+              </span>
+              <span class="notification-time">{{ note.created_at|timesince }} ago</span>
+            </div>
+            <div class="notification-body">{{ note.message }}</div>
+          </div>
+        {% empty %}
+          <div style="padding: 16px; color: var(--text-light); text-align: center; font-size: 13px;">
+            No new department alerts.
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Column: Requests Table & Allocated Blocks -->
+  <div>
+    <!-- My Team's Submitted Requests -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">My Department Requisitions</div>
+        <span style="font-size: 12px; color: var(--text-light);">Prioritized via multi-factor AI scoring</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table-custom">
+          <thead>
+            <tr>
+              <th>Req Code</th>
+              <th>Task / Asset</th>
+              <th>Location</th>
+              <th>Severity</th>
+              <th>Duration</th>
+              <th>Priority Score</th>
+              <th>Allocated Block</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for req in requests %}
+              <tr>
+                <td>
+                  <strong>{{ req.request_code }}</strong>
+                  {% if req.is_emergency %}
+                    <span class="badge badge-emergency" style="font-size: 9px; padding: 2px 4px; display: block; width: fit-content; margin-top: 2px;">EMERGENCY</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <div style="font-weight: 500;">{{ req.maintenance_type }}</div>
+                  <div style="font-size: 11px; color: var(--text-light);">Asset: {{ req.asset_id }}</div>
+                </td>
+                <td>{{ req.location }}</td>
+                <td>
+                  <span class="badge badge-{{ req.severity|lower }}">{{ req.severity }}</span>
+                </td>
+                <td>{{ req.estimated_duration }}m</td>
+                <td>
+                  <span style="font-weight: 700; color: var(--primary-navy); font-size: 12px;">{{ req.calculated_priority_score|floatformat:0 }}</span>
+                </td>
+                <td>
+                  {% if req.assigned_block %}
+                    <span class="badge badge-team">{{ req.assigned_block.block_code }}</span>
+                    <div style="font-size: 11px; color: var(--text-light);">{{ req.assigned_block.start_time|time:"H:i" }}–{{ req.assigned_block.end_time|time:"H:i" }}</div>
+                  {% elif req.status == 'CONFLICT' %}
+                    <span style="color: var(--color-danger); font-size: 11px; font-weight: 600;">
+                      <span class="ui-icon" aria-hidden="true">⚠️</span>
+                      Headway Clash
+                    </span>
+                  {% else %}
+                    <span style="color: var(--text-light); font-size: 12px;">Pending</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <span class="badge badge-{{ req.status|lower }}">{{ req.status }}</span>
+                </td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="8" style="text-align: center; padding: 24px; color: var(--text-light);">
+                  No maintenance requisitions submitted for this department yet.
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Corridor Blocks Scheduled for My Department -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Corridor Blocks Allocated to {{ team.name }}</div>
+        <span class="badge badge-scheduled">Possession Windows</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table-custom">
+          <thead>
+            <tr>
+              <th>Block Code</th>
+              <th>Location</th>
+              <th>Time Window</th>
+              <th>25kV OHE Cut</th>
+              <th>Possession Type</th>
+              <th>Utilization</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for block in blocks %}
+              <tr class="{% if block.maintenance_tasks.count > 1 %}bundled-row{% endif %}">
+                <td><strong class="badge badge-team">{{ block.block_code }}</strong></td>
+                <td>{{ block.location }}</td>
+                <td><strong>{{ block.start_time|time:"H:i" }} – {{ block.end_time|time:"H:i" }}</strong> ({{ block.duration_minutes }}m)</td>
+                <td>
+                  {% if block.is_power_cut_required %}
+                    <span class="badge badge-ohe">Power Cut Required</span>
+                  {% else %}
+                    <span style="color: var(--text-light); font-size: 12px;">Normal</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if block.maintenance_tasks.count > 1 %}
+                    <span class="badge" style="background: var(--joint-bg); color: var(--joint-coral); border: 1px solid var(--joint-coral);">
+                      ★ Multi-Agency Joint
+                    </span>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">{{ block.primary_team_name }}</div>
+                  {% else %}
+                    <span style="color: var(--text-muted); font-size: 12px;">Departmental Possession</span>
+                  {% endif %}
+                </td>
+                <td>{{ block.utilization_percent }}%</td>
+                <td><span class="badge badge-{{ block.status|lower }}">{{ block.status }}</span></td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="7" style="text-align: center; padding: 24px; color: var(--text-dim);">
+                  No blocks currently allocated for this department.
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Multi-Agency Joint Possessions -->
+    {% if bundled_blocks %}
+      <div class="card" style="border-left: 4px solid var(--gold-accent);">
+        <div class="card-header" style="background-color: var(--violet-accent);">
+          <div class="card-title" style="color: var(--gold-accent);">
+            Joint Multi-Agency Possessions
+          </div>
+        </div>
+        <div class="card-body">
+          {% for b in bundled_blocks %}
+            <div style="background: var(--bg-panel-subtle); border: 1px solid var(--border-strong); padding: 12px; margin-bottom: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <strong>Block {{ b.block_code }} ({{ b.location }})</strong>
+                <span style="font-size: 12px; color: var(--text-muted); font-family: monospace;">{{ b.start_time|time:"H:i" }} – {{ b.end_time|time:"H:i" }}</span>
+              </div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
+                <strong>Participating Teams:</strong> {{ b.primary_team_name }}
+              </div>
+              <div class="ai-box" style="margin-top: 6px; font-size: 12px;">
+                {{ b.ai_summary }}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
